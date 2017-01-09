@@ -1,0 +1,24 @@
+#Set your Ubertooth to your favorite data channel:
+
+    ubertooth-util -c2404
+    ubertooth-util -c2450
+
+#It also helps to adjust the squelch, though you will have to play with the value to find something that works:
+
+    ubertooth-util -z-50
+
+#Then enter promiscuous mode:
+
+    ubertooth-btle -p
+
+
+# Ubertooth spectrum analyzer
+sudo ubertooth-specan-ui
+
+
+# Bluemaho - broken
+sudo python /home/timmy/Applications/Bluetooth/bluemaho-090417/bluemaho.py
+
+
+# Crackle - Cracks Bluetooth Low Energy encryption (AKA Bluetooth Smart)
+/home/timmy/Applications/Bluetooth/crackle/crackle -i <input.pcap>
